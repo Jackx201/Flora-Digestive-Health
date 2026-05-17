@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.rounded.CalendarMonth
@@ -97,7 +98,10 @@ fun FloraApp(viewModel: FloraViewModel = viewModel()) {
             if (filteredMovements.isEmpty()) {
                 EmptyState()
             } else {
-                MovementList(filteredMovements)
+                MovementList(
+                    movements = filteredMovements,
+                    onDelete = { viewModel.deleteMovement(it) }
+                )
             }
         }
 
@@ -206,24 +210,31 @@ fun CalendarHeader(
 }
 
 @Composable
-fun MovementList(movements: List<BowelMovement>) {
+fun MovementList(
+    movements: List<BowelMovement>,
+    onDelete: (BowelMovement) -> Unit
+) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(movements) { movement ->
-            MovementItem(movement)
+            MovementItem(movement, onDelete)
         }
     }
 }
 
 @Composable
-fun MovementItem(movement: BowelMovement) {
+fun MovementItem(
+    movement: BowelMovement,
+    onDelete: (BowelMovement) -> Unit
+) {
     val date = Instant.ofEpochMilli(movement.timestamp)
         .atZone(ZoneId.systemDefault())
         .toLocalDateTime()
     val formatter = DateTimeFormatter.ofPattern("HH:mm")
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -285,7 +296,39 @@ fun MovementItem(movement: BowelMovement) {
                     }
                 }
             }
+
+            IconButton(onClick = { showDeleteConfirm = true }) {
+                Icon(
+                    Icons.Default.DeleteOutline,
+                    contentDescription = "Borrar",
+                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                )
+            }
         }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("¿Eliminar registro?") },
+            text = { Text("Esta acción no se puede deshacer.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDelete(movement)
+                        showDeleteConfirm = false
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Eliminar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
     }
 }
 
@@ -294,6 +337,17 @@ fun MovementItem(movement: BowelMovement) {
 fun AddMovementSheetContent(onConfirm: (Int?, String) -> Unit) {
     var notes by remember { mutableStateOf("") }
     var bristolType by remember { mutableStateOf<Int?>(null) }
+
+    val bristolDescription = when (bristolType) {
+        1 -> "Trozos duros y separados (estreñimiento)"
+        2 -> "Forma de salchicha con bultos"
+        3 -> "Como una salchicha con grietas"
+        4 -> "Suave y lisa (ideal)"
+        5 -> "Trozos blandos con bordes definidos"
+        6 -> "Trozos blandos con bordes deshechos"
+        7 -> "Acuosa, sin trozos (diarrea)"
+        else -> "Selecciona un tipo"
+    }
 
     Column(
         modifier = Modifier
@@ -314,9 +368,9 @@ fun AddMovementSheetContent(onConfirm: (Int?, String) -> Unit) {
             color = MaterialTheme.colorScheme.primary
         )
         Text(
-            "Escala de Bristol (1: Estreñimiento - 7: Diarrea)",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.outline
+            bristolDescription,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (bristolType != null) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outline
         )
         Spacer(Modifier.height(16.dp))
         
