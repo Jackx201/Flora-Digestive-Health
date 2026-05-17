@@ -56,6 +56,15 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+fun getBristolColor(type: Int?): Color {
+    return when (type) {
+        1, 7 -> Color(0xFFE57373) // Red (Stressed/Warning)
+        2, 5, 6 -> Color(0xFFFFB74D) // Orange/Yellow (Attention)
+        3, 4 -> Color(0xFF81C784) // Green (Ideal)
+        else -> Color(0xFFBDBDBD) // Grey (Unknown)
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FloraApp(viewModel: FloraViewModel = viewModel()) {
@@ -364,12 +373,14 @@ fun DayItem(
     val indicatorColor = if (movementsForDay.isEmpty()) {
         Color.Transparent
     } else {
-        val worstType = movementsForDay.mapNotNull { it.bristolType }.maxOrNull() ?: 4
-        when (worstType) {
-            1, 7 -> Color(0xFFE57373) // Red
-            2, 5, 6 -> Color(0xFFFFB74D) // Orange/Yellow
-            else -> Color(0xFF81C784) // Green
-        }
+        val worstType = movementsForDay.mapNotNull { it.bristolType }.maxByOrNull { 
+            when(it) {
+                1, 7 -> 3 // Priority Red
+                2, 5, 6 -> 2 // Priority Orange
+                else -> 1 // Priority Green
+            }
+        } ?: 4
+        getBristolColor(worstType)
     }
 
     Surface(
@@ -455,14 +466,14 @@ fun MovementItem(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.secondaryContainer),
+                    .background(getBristolColor(movement.bristolType).copy(alpha = 0.2f)),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = movement.bristolType?.toString() ?: "?",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                    color = getBristolColor(movement.bristolType)
                 )
             }
             
@@ -574,7 +585,7 @@ fun AddMovementSheetContent(onConfirm: (Int?, String) -> Unit) {
         Text(
             bristolDescription,
             style = MaterialTheme.typography.bodyMedium,
-            color = if (bristolType != null) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outline
+            color = if (bristolType != null) getBristolColor(bristolType) else MaterialTheme.colorScheme.outline
         )
         Spacer(Modifier.height(16.dp))
         
@@ -590,8 +601,8 @@ fun AddMovementSheetContent(onConfirm: (Int?, String) -> Unit) {
                     label = { Text(type.toString()) },
                     shape = CircleShape,
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primary,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                        selectedContainerColor = getBristolColor(type),
+                        selectedLabelColor = Color.White
                     )
                 )
             }
