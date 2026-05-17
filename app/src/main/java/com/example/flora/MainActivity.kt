@@ -4,20 +4,25 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Notes
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.ChevronLeft
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -32,8 +38,11 @@ import com.example.flora.data.BowelMovement
 import com.example.flora.ui.theme.FloraTheme
 import java.time.Instant
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -185,6 +194,81 @@ fun CalendarHeader(
     allMovements: List<BowelMovement>,
     onDateSelected: (LocalDate) -> Unit
 ) {
+    var isExpanded by remember { mutableStateOf(false) }
+    var displayedMonth by remember(selectedDate) { mutableStateOf(YearMonth.from(selectedDate)) }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        )
+    ) {
+        Column(modifier = Modifier.padding(8.dp)) {
+            // Header: Month Name and Toggle
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (isExpanded) {
+                        IconButton(onClick = { displayedMonth = displayedMonth.minusMonths(1) }) {
+                            Icon(Icons.Rounded.ChevronLeft, "Mes anterior")
+                        }
+                    }
+                    
+                    Text(
+                        text = displayedMonth.month.getDisplayName(TextStyle.FULL, Locale("es")).replaceFirstChar { it.uppercase() } + " ${displayedMonth.year}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+
+                    if (isExpanded) {
+                        IconButton(onClick = { displayedMonth = displayedMonth.plusMonths(1) }) {
+                            Icon(Icons.Rounded.ChevronRight, "Mes siguiente")
+                        }
+                    }
+                }
+                
+                IconButton(onClick = { isExpanded = !isExpanded }) {
+                    Icon(
+                        if (isExpanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
+                        contentDescription = if (isExpanded) "Colapsar" else "Expandir",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            AnimatedContent(
+                targetState = isExpanded,
+                transitionSpec = {
+                    expandVertically() + fadeIn() togetherWith shrinkVertically() + fadeOut()
+                },
+                label = "CalendarExpansion"
+            ) { expanded ->
+                if (expanded) {
+                    MonthView(selectedDate, displayedMonth, allMovements, onDateSelected)
+                } else {
+                    WeekView(selectedDate, allMovements, onDateSelected)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun WeekView(
+    selectedDate: LocalDate,
+    allMovements: List<BowelMovement>,
+    onDateSelected: (LocalDate) -> Unit
+) {
     val days = remember(selectedDate) {
         (-3..3).map { selectedDate.plusDays(it.toLong()) }
     }
@@ -192,53 +276,138 @@ fun CalendarHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 16.dp, horizontal = 8.dp),
+            .padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
         days.forEach { date ->
-            val isSelected = date == selectedDate
-            val hasMovements = allMovements.any {
-                Instant.ofEpochMilli(it.timestamp)
-                    .atZone(ZoneId.systemDefault())
-                    .toLocalDate() == date
-            }
+            DayItem(date, selectedDate, allMovements, onDateSelected)
+        }
+    }
+}
 
-            Surface(
-                onClick = { onDateSelected(date) },
-                shape = RoundedCornerShape(16.dp),
-                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                modifier = Modifier
-                    .width(48.dp)
-                    .height(80.dp)
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                    modifier = Modifier.padding(4.dp)
-                ) {
-                    Text(
-                        text = date.dayOfWeek.name.take(3),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = date.dayOfMonth.toString(),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                    )
-                    if (hasMovements) {
-                        Box(
-                            modifier = Modifier
-                                .padding(top = 4.dp)
-                                .size(6.dp)
-                                .background(
-                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
-                                    shape = CircleShape
-                                )
-                        )
+@Composable
+fun MonthView(
+    selectedDate: LocalDate,
+    currentMonth: YearMonth,
+    allMovements: List<BowelMovement>,
+    onDateSelected: (LocalDate) -> Unit
+) {
+    val daysInMonth = currentMonth.lengthOfMonth()
+    val firstDayOfMonth = currentMonth.atDay(1)
+    val firstDayOfWeek = firstDayOfMonth.dayOfWeek.value // 1 (Mon) to 7 (Sun)
+    
+    // Adjust for Monday start: value - 1
+    val emptySlots = firstDayOfWeek - 1
+
+    Column(modifier = Modifier.padding(bottom = 8.dp)) {
+        // Day names header
+        Row(modifier = Modifier.fillMaxWidth()) {
+            listOf("L", "M", "X", "J", "V", "S", "D").forEach { dayName ->
+                Text(
+                    text = dayName,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+        }
+        
+        Spacer(Modifier.height(8.dp))
+
+        // Grid of days (simplified using Rows instead of LazyVerticalGrid to avoid nested scroll issues in some contexts)
+        val totalDays = (1..daysInMonth).map { currentMonth.atDay(it) }
+        val chunks = (List(emptySlots) { null } + totalDays).chunked(7)
+
+        chunks.forEach { week ->
+            Row(modifier = Modifier.fillMaxWidth()) {
+                week.forEach { date ->
+                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        if (date != null) {
+                            DayItem(
+                                date = date,
+                                selectedDate = selectedDate,
+                                allMovements = allMovements,
+                                onDateSelected = onDateSelected,
+                                compact = true
+                            )
+                        }
                     }
                 }
+                // Fill the last row if needed
+                if (week.size < 7) {
+                    repeat(7 - week.size) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+        }
+    }
+}
+
+@Composable
+fun DayItem(
+    date: LocalDate,
+    selectedDate: LocalDate,
+    allMovements: List<BowelMovement>,
+    onDateSelected: (LocalDate) -> Unit,
+    compact: Boolean = false
+) {
+    val isSelected = date == selectedDate
+    val movementsForDay = allMovements.filter {
+        Instant.ofEpochMilli(it.timestamp)
+            .atZone(ZoneId.systemDefault())
+            .toLocalDate() == date
+    }
+    
+    val indicatorColor = if (movementsForDay.isEmpty()) {
+        Color.Transparent
+    } else {
+        val worstType = movementsForDay.mapNotNull { it.bristolType }.maxOrNull() ?: 4
+        when (worstType) {
+            1, 7 -> Color(0xFFE57373) // Red
+            2, 5, 6 -> Color(0xFFFFB74D) // Orange/Yellow
+            else -> Color(0xFF81C784) // Green
+        }
+    }
+
+    Surface(
+        onClick = { onDateSelected(date) },
+        shape = RoundedCornerShape(12.dp),
+        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+        modifier = Modifier
+            .width(if (compact) 40.dp else 48.dp)
+            .height(if (compact) 48.dp else 75.dp)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(2.dp)
+        ) {
+            if (!compact) {
+                Text(
+                    text = date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale("es")).take(1).uppercase(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                text = date.dayOfMonth.toString(),
+                style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+            )
+            if (movementsForDay.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .padding(top = 2.dp)
+                        .size(if (compact) 4.dp else 6.dp)
+                        .background(
+                            color = if (isSelected) MaterialTheme.colorScheme.onPrimary else indicatorColor,
+                            shape = CircleShape
+                        )
+                )
             }
         }
     }
