@@ -9,13 +9,23 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.flora.data.BowelMovement
 import com.example.flora.ui.theme.FloraTheme
@@ -40,39 +50,93 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun FloraApp(viewModel: FloraViewModel = viewModel()) {
     val movements by viewModel.allMovements.collectAsState()
-    var showDialog by remember { mutableStateOf(false) }
+    var showSheet by remember { mutableStateOf(false) }
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
+    val sheetState = rememberModalBottomSheetState()
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Flora - Registro Intestinal") })
+            CenterAlignedTopAppBar(
+                title = { 
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.CalendarMonth, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Flora", fontWeight = FontWeight.Bold)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showDialog = true }) {
-                Icon(Icons.Default.Add, contentDescription = "Agregar Registro")
-            }
+            ExtendedFloatingActionButton(
+                onClick = { showSheet = true },
+                icon = { Icon(Icons.Default.Add, "Agregar") },
+                text = { Text("Registrar") },
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+            )
         }
     ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.surface)
+        ) {
             CalendarHeader(selectedDate, movements) { selectedDate = it }
+            
             val filteredMovements = movements.filter {
                 val moveDate = Instant.ofEpochMilli(it.timestamp)
                     .atZone(ZoneId.systemDefault())
                     .toLocalDate()
                 moveDate == selectedDate
             }
-            MovementList(filteredMovements)
+            
+            if (filteredMovements.isEmpty()) {
+                EmptyState()
+            } else {
+                MovementList(filteredMovements)
+            }
         }
 
-        if (showDialog) {
-            AddMovementDialog(
-                onDismiss = { showDialog = false },
-                onConfirm = { bristolType, notes ->
-                    viewModel.addMovement(bristolType, notes)
-                    showDialog = false
-                }
-            )
+        if (showSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showSheet = false },
+                sheetState = sheetState,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            ) {
+                AddMovementSheetContent(
+                    onConfirm = { bristolType, notes ->
+                        viewModel.addMovement(bristolType, notes)
+                        showSheet = false
+                    }
+                )
+            }
         }
+    }
+}
+
+@Composable
+fun EmptyState() {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            Icons.Default.History,
+            contentDescription = null,
+            modifier = Modifier.size(64.dp),
+            tint = MaterialTheme.colorScheme.outlineVariant
+        )
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "No hay registros hoy",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.outline
+        )
     }
 }
 
@@ -87,7 +151,9 @@ fun CalendarHeader(
     }
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 16.dp, horizontal = 8.dp),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
         days.forEach { date ->
@@ -98,41 +164,41 @@ fun CalendarHeader(
                     .toLocalDate() == date
             }
 
-            Column(
+            Surface(
+                onClick = { onDateSelected(date) },
+                shape = RoundedCornerShape(16.dp),
+                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
                 modifier = Modifier
-                    .padding(4.dp)
-                    .width(45.dp)
-                    .height(70.dp)
-                    .let {
-                        if (isSelected) it.background(
-                            MaterialTheme.colorScheme.primaryContainer,
-                            MaterialTheme.shapes.small
-                        )
-                        else it
-                    }
-                    .clickable { onDateSelected(date) },
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                    .width(48.dp)
+                    .height(80.dp)
             ) {
-                Text(
-                    text = date.dayOfWeek.name.take(3),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = date.dayOfMonth.toString(),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                )
-                if (hasMovements) {
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .background(
-                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary,
-                                shape = androidx.compose.foundation.shape.CircleShape
-                            )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.padding(4.dp)
+                ) {
+                    Text(
+                        text = date.dayOfWeek.name.take(3),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Text(
+                        text = date.dayOfMonth.toString(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                    )
+                    if (hasMovements) {
+                        Box(
+                            modifier = Modifier
+                                .padding(top = 4.dp)
+                                .size(6.dp)
+                                .background(
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
+                                    shape = CircleShape
+                                )
+                        )
+                    }
                 }
             }
         }
@@ -141,7 +207,11 @@ fun CalendarHeader(
 
 @Composable
 fun MovementList(movements: List<BowelMovement>) {
-    LazyColumn {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
         items(movements) { movement ->
             MovementItem(movement)
         }
@@ -153,70 +223,142 @@ fun MovementItem(movement: BowelMovement) {
     val date = Instant.ofEpochMilli(movement.timestamp)
         .atZone(ZoneId.systemDefault())
         .toLocalDateTime()
-    val formatter = DateTimeFormatter.ofPattern("MMM dd, yyyy - HH:mm")
+    val formatter = DateTimeFormatter.ofPattern("HH:mm")
 
     Card(
-        modifier = Modifier.fillMaxWidth().padding(8.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        )
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(text = date.format(formatter), style = MaterialTheme.typography.titleMedium)
-            if (movement.bristolType != null) {
-                Text(text = "Escala de las heces: ${movement.bristolType}")
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.secondaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = movement.bristolType?.toString() ?: "?",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
             }
-            if (movement.notes.isNotEmpty()) {
-                Text(text = "Notas: ${movement.notes}")
+            
+            Spacer(Modifier.width(16.dp))
+            
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Tipo ${movement.bristolType ?: '?'}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = date.format(formatter),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+                if (movement.notes.isNotEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.Top) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Notes, 
+                            contentDescription = null, 
+                            modifier = Modifier.size(14.dp).padding(top = 2.dp),
+                            tint = MaterialTheme.colorScheme.outline
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = movement.notes,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun AddMovementDialog(onDismiss: () -> Unit, onConfirm: (Int?, String) -> Unit) {
+fun AddMovementSheetContent(onConfirm: (Int?, String) -> Unit) {
     var notes by remember { mutableStateOf("") }
     var bristolType by remember { mutableStateOf<Int?>(null) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Registrar evacuación") },
-        text = {
-            Column {
-                TextField(
-                    value = notes,
-                    onValueChange = { notes = it },
-                    label = { Text("Notas") }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 32.dp)
+    ) {
+        Text(
+            "Nuevo Registro",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(24.dp))
+        
+        Text(
+            "¿Cómo fue la consistencia?",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Text(
+            "Escala de Bristol (1: Estreñimiento - 7: Diarrea)",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.outline
+        )
+        Spacer(Modifier.height(16.dp))
+        
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            (1..7).forEach { type ->
+                FilterChip(
+                    selected = bristolType == type,
+                    onClick = { bristolType = type },
+                    label = { Text(type.toString()) },
+                    shape = CircleShape,
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                    )
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Bristol Type (1-7):")
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    (1..4).forEach { type ->
-                        FilterChip(
-                            selected = bristolType == type,
-                            onClick = { bristolType = type },
-                            label = { Text(type.toString()) }
-                        )
-                    }
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    (5..7).forEach { type ->
-                        FilterChip(
-                            selected = bristolType == type,
-                            onClick = { bristolType = type },
-                            label = { Text(type.toString()) }
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(bristolType, notes) }) {
-                Text("Add")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
             }
         }
-    )
+        
+        Spacer(Modifier.height(24.dp))
+        
+        OutlinedTextField(
+            value = notes,
+            onValueChange = { notes = it },
+            label = { Text("Notas o síntomas") },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            leadingIcon = { Icon(Icons.AutoMirrored.Filled.Notes, null) }
+        )
+        
+        Spacer(Modifier.height(32.dp))
+        
+        Button(
+            onClick = { onConfirm(bristolType, notes) },
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            shape = RoundedCornerShape(16.dp),
+            enabled = bristolType != null
+        ) {
+            Text("Guardar Registro", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
+    }
 }
