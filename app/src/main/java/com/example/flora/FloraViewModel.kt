@@ -25,9 +25,9 @@ class FloraViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    fun addMovement(bristolType: Int? = null, notes: String = "") {
+    fun addMovement(bristolType: Int? = null, notes: String = "", timestamp: Long = System.currentTimeMillis()) {
         viewModelScope.launch {
-            repository.insert(BowelMovement(bristolType = bristolType, notes = notes))
+            repository.insert(BowelMovement(bristolType = bristolType, notes = notes, timestamp = timestamp))
         }
     }
 

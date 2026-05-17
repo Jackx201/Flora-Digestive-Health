@@ -65,6 +65,35 @@ fun FloraApp(viewModel: FloraViewModel = viewModel()) {
                         Text("Flora", fontWeight = FontWeight.Bold)
                     }
                 },
+                actions = {
+                    var showDatePicker by remember { mutableStateOf(false) }
+                    IconButton(onClick = { showDatePicker = true }) {
+                        Icon(Icons.Rounded.CalendarMonth, "Seleccionar fecha")
+                    }
+                    if (showDatePicker) {
+                        val datePickerState = rememberDatePickerState(
+                            initialSelectedDateMillis = selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                        )
+                        DatePickerDialog(
+                            onDismissRequest = { showDatePicker = false },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    datePickerState.selectedDateMillis?.let {
+                                        selectedDate = Instant.ofEpochMilli(it)
+                                            .atZone(ZoneId.systemDefault())
+                                            .toLocalDate()
+                                    }
+                                    showDatePicker = false
+                                }) { Text("OK") }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showDatePicker = false }) { Text("Cancelar") }
+                            }
+                        ) {
+                            DatePicker(state = datePickerState)
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
@@ -113,7 +142,13 @@ fun FloraApp(viewModel: FloraViewModel = viewModel()) {
             ) {
                 AddMovementSheetContent(
                     onConfirm = { bristolType, notes ->
-                        viewModel.addMovement(bristolType, notes)
+                        val now = java.time.LocalTime.now()
+                        val timestamp = selectedDate.atTime(now)
+                            .atZone(ZoneId.systemDefault())
+                            .toInstant()
+                            .toEpochMilli()
+                        
+                        viewModel.addMovement(bristolType, notes, timestamp)
                         showSheet = false
                     }
                 )
