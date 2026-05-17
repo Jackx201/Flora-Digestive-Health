@@ -1,12 +1,12 @@
 package com.example.flora
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -18,9 +18,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.CalendarViewWeek
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material3.*
@@ -29,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -38,10 +43,13 @@ import com.example.flora.data.BowelMovement
 import com.example.flora.ui.theme.FloraTheme
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
@@ -71,44 +79,56 @@ fun FloraApp(viewModel: FloraViewModel = viewModel()) {
     val movements by viewModel.allMovements.collectAsState()
     var showSheet by remember { mutableStateOf(false) }
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
+    var currentTab by remember { mutableIntStateOf(0) }
     val sheetState = rememberModalBottomSheetState()
+    val context = LocalContext.current
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = { 
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.CalendarMonth, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Icon(
+                            if (currentTab == 0) Icons.Rounded.CalendarMonth else Icons.Rounded.BarChart, 
+                            contentDescription = null, 
+                            tint = MaterialTheme.colorScheme.primary
+                        )
                         Spacer(Modifier.width(8.dp))
-                        Text("Flora", fontWeight = FontWeight.Bold)
+                        Text(if (currentTab == 0) "Flora" else "Estadísticas", fontWeight = FontWeight.Bold)
                     }
                 },
                 actions = {
-                    var showDatePicker by remember { mutableStateOf(false) }
-                    IconButton(onClick = { showDatePicker = true }) {
-                        Icon(Icons.Rounded.CalendarMonth, "Seleccionar fecha")
-                    }
-                    if (showDatePicker) {
-                        val datePickerState = rememberDatePickerState(
-                            initialSelectedDateMillis = selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-                        )
-                        DatePickerDialog(
-                            onDismissRequest = { showDatePicker = false },
-                            confirmButton = {
-                                TextButton(onClick = {
-                                    datePickerState.selectedDateMillis?.let {
-                                        selectedDate = Instant.ofEpochMilli(it)
-                                            .atZone(ZoneId.systemDefault())
-                                            .toLocalDate()
-                                    }
-                                    showDatePicker = false
-                                }) { Text("OK") }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = { showDatePicker = false }) { Text("Cancelar") }
+                    if (currentTab == 0) {
+                        var showDatePicker by remember { mutableStateOf(false) }
+                        IconButton(onClick = { showDatePicker = true }) {
+                            Icon(Icons.Rounded.CalendarMonth, "Seleccionar fecha")
+                        }
+                        if (showDatePicker) {
+                            val datePickerState = rememberDatePickerState(
+                                initialSelectedDateMillis = selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                            )
+                            DatePickerDialog(
+                                onDismissRequest = { showDatePicker = false },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        datePickerState.selectedDateMillis?.let {
+                                            selectedDate = Instant.ofEpochMilli(it)
+                                                .atZone(ZoneId.systemDefault())
+                                                .toLocalDate()
+                                        }
+                                        showDatePicker = false
+                                    }) { Text("OK") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showDatePicker = false }) { Text("Cancelar") }
+                                }
+                            ) {
+                                DatePicker(state = datePickerState)
                             }
-                        ) {
-                            DatePicker(state = datePickerState)
+                        }
+                    } else {
+                        IconButton(onClick = { exportStatsAsText(context, movements) }) {
+                            Icon(Icons.Default.Share, "Compartir estadísticas")
                         }
                     }
                 },
@@ -117,38 +137,67 @@ fun FloraApp(viewModel: FloraViewModel = viewModel()) {
                 )
             )
         },
+        bottomBar = {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 8.dp
+            ) {
+                NavigationBarItem(
+                    icon = { Icon(Icons.Rounded.Home, null) },
+                    label = { Text("Diario") },
+                    selected = currentTab == 0,
+                    onClick = { currentTab = 0 }
+                )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Rounded.BarChart, null) },
+                    label = { Text("Estadísticas") },
+                    selected = currentTab == 1,
+                    onClick = { currentTab = 1 }
+                )
+            }
+        },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { showSheet = true },
-                icon = { Icon(Icons.Default.Add, "Agregar") },
-                text = { Text("Registrar") },
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-            )
+            if (currentTab == 0) {
+                ExtendedFloatingActionButton(
+                    onClick = { showSheet = true },
+                    icon = { Icon(Icons.Default.Add, "Agregar") },
+                    text = { Text("Registrar") },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
         }
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surface)
-        ) {
-            CalendarHeader(selectedDate, movements) { selectedDate = it }
-            
-            val filteredMovements = movements.filter {
-                val moveDate = Instant.ofEpochMilli(it.timestamp)
-                    .atZone(ZoneId.systemDefault())
-                    .toLocalDate()
-                moveDate == selectedDate
-            }
-            
-            if (filteredMovements.isEmpty()) {
-                EmptyState()
-            } else {
-                MovementList(
-                    movements = filteredMovements,
-                    onDelete = { viewModel.deleteMovement(it) }
-                )
+        Crossfade(targetState = currentTab, modifier = Modifier.padding(innerPadding), label = "TabTransition") { tab ->
+            when (tab) {
+                0 -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surface)
+                    ) {
+                        CalendarHeader(selectedDate, movements) { selectedDate = it }
+                        
+                        val filteredMovements = movements.filter {
+                            val moveDate = Instant.ofEpochMilli(it.timestamp)
+                                .atZone(ZoneId.systemDefault())
+                                .toLocalDate()
+                            moveDate == selectedDate
+                        }
+                        
+                        if (filteredMovements.isEmpty()) {
+                            EmptyState()
+                        } else {
+                            MovementList(
+                                movements = filteredMovements,
+                                onDelete = { viewModel.deleteMovement(it) }
+                            )
+                        }
+                    }
+                }
+                1 -> {
+                    StatsScreen(movements)
+                }
             }
         }
 
@@ -160,7 +209,7 @@ fun FloraApp(viewModel: FloraViewModel = viewModel()) {
             ) {
                 AddMovementSheetContent(
                     onConfirm = { bristolType, notes ->
-                        val now = java.time.LocalTime.now()
+                        val now = LocalTime.now()
                         val timestamp = selectedDate.atTime(now)
                             .atZone(ZoneId.systemDefault())
                             .toInstant()
@@ -173,6 +222,50 @@ fun FloraApp(viewModel: FloraViewModel = viewModel()) {
             }
         }
     }
+}
+
+fun exportStatsAsText(context: android.content.Context, movements: List<BowelMovement>) {
+    val total = movements.size
+    val last7Days = movements.count { 
+        Instant.ofEpochMilli(it.timestamp).isAfter(Instant.now().minus(7, ChronoUnit.DAYS))
+    }
+    
+    val ideal = movements.count { it.bristolType in 3..4 }
+    val attention = movements.count { it.bristolType in listOf(2, 5, 6) }
+    val warning = movements.count { it.bristolType in listOf(1, 7) }
+    
+    val report = buildString {
+        appendLine("📊 Reporte de Salud Flora")
+        appendLine("Generado el: ${LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))}")
+        appendLine("---------------------------")
+        appendLine("🔹 Resumen General:")
+        appendLine("- Registros totales: $total")
+        appendLine("- Últimos 7 días: $last7Days")
+        appendLine()
+        appendLine("🔹 Distribución Bristol:")
+        if (total > 0) {
+            appendLine("- Ideal (Tipo 3-4): $ideal (${(ideal * 100 / total)}%)")
+            appendLine("- Atención (Tipo 2, 5, 6): $attention (${(attention * 100 / total)}%)")
+            appendLine("- Advertencia (Tipo 1, 7): $warning (${(warning * 100 / total)}%)")
+        } else {
+            appendLine("Sin registros aún.")
+        }
+        appendLine()
+        appendLine("🔸 Últimas Notas:")
+        movements.take(5).forEach { move ->
+            val date = Instant.ofEpochMilli(move.timestamp).atZone(ZoneId.systemDefault()).toLocalDate()
+            val type = move.bristolType ?: "?"
+            appendLine("- $date: Tipo $type ${if (move.notes.isNotEmpty()) "(${move.notes})" else ""}")
+        }
+    }
+
+    val sendIntent: Intent = Intent().apply {
+        action = Intent.ACTION_SEND
+        putExtra(Intent.EXTRA_TEXT, report)
+        type = "text/plain"
+    }
+    val shareIntent = Intent.createChooser(sendIntent, "Enviar reporte de Flora")
+    context.startActivity(shareIntent)
 }
 
 @Composable
@@ -628,6 +721,178 @@ fun AddMovementSheetContent(onConfirm: (Int?, String) -> Unit) {
             enabled = bristolType != null
         ) {
             Text("Guardar Registro", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
+    }
+}
+
+@Composable
+fun StatsScreen(movements: List<BowelMovement>) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Text(
+                "Resumen de Salud",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
+        item {
+            OverviewSection(movements)
+        }
+
+        item {
+            HealthDistributionSection(movements)
+        }
+
+        item {
+            HistoricalPatternsSection(movements)
+        }
+        
+        item {
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+fun OverviewSection(movements: List<BowelMovement>) {
+    val total = movements.size
+    val last7Days = movements.count { 
+        Instant.ofEpochMilli(it.timestamp).isAfter(Instant.now().minus(7, ChronoUnit.DAYS))
+    }
+    val thisMonth = movements.count {
+        val date = Instant.ofEpochMilli(it.timestamp).atZone(ZoneId.systemDefault()).toLocalDate()
+        date.month == LocalDate.now().month && date.year == LocalDate.now().year
+    }
+
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        StatCard("Total", total.toString(), Icons.Rounded.History, Modifier.weight(1f))
+        StatCard("7 días", last7Days.toString(), Icons.Rounded.CalendarViewWeek, Modifier.weight(1f))
+        StatCard("Mes", thisMonth.toString(), Icons.Rounded.CalendarMonth, Modifier.weight(1f))
+    }
+}
+
+@Composable
+fun StatCard(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Icon(icon, null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(8.dp))
+            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.outline)
+        }
+    }
+}
+
+@Composable
+fun HealthDistributionSection(movements: List<BowelMovement>) {
+    if (movements.isEmpty()) return
+
+    val total = movements.size.toFloat()
+    val ideal = movements.count { it.bristolType in 3..4 } / total
+    val attention = movements.count { it.bristolType in listOf(2, 5, 6) } / total
+    val warning = movements.count { it.bristolType in listOf(1, 7) } / total
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f))
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text("Distribución Bristol", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(16.dp))
+            
+            // Custom Bar Chart
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(24.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            ) {
+                if (warning > 0) Box(Modifier.weight(warning.coerceAtLeast(0.01f)).fillMaxHeight().background(Color(0xFFE57373)))
+                if (attention > 0) Box(Modifier.weight(attention.coerceAtLeast(0.01f)).fillMaxHeight().background(Color(0xFFFFB74D)))
+                if (ideal > 0) Box(Modifier.weight(ideal.coerceAtLeast(0.01f)).fillMaxHeight().background(Color(0xFF81C784)))
+            }
+            
+            Spacer(Modifier.height(16.dp))
+            
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                LegendItem("Ideal (Tipo 3-4)", Color(0xFF81C784), (ideal * 100).toInt())
+                LegendItem("Atención (Tipo 2, 5, 6)", Color(0xFFFFB74D), (attention * 100).toInt())
+                LegendItem("Advertencia (Tipo 1, 7)", Color(0xFFE57373), (warning * 100).toInt())
+            }
+        }
+    }
+}
+
+@Composable
+fun LegendItem(label: String, color: Color, percentage: Int) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(12.dp).clip(CircleShape).background(color))
+        Spacer(Modifier.width(8.dp))
+        Text(label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+        Text("$percentage%", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+fun HistoricalPatternsSection(movements: List<BowelMovement>) {
+    if (movements.isEmpty()) return
+
+    val last7DaysMovements = movements.filter { 
+        Instant.ofEpochMilli(it.timestamp).isAfter(Instant.now().minus(7, ChronoUnit.DAYS))
+    }.sortedBy { it.timestamp }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text("Actividad últimos 7 días", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(24.dp))
+            
+            Row(
+                modifier = Modifier.fillMaxWidth().height(100.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Bottom
+            ) {
+                val today = LocalDate.now()
+                (6 downTo 0).forEach { daysAgo ->
+                    val date = today.minusDays(daysAgo.toLong())
+                    val count = last7DaysMovements.count { 
+                        Instant.ofEpochMilli(it.timestamp).atZone(ZoneId.systemDefault()).toLocalDate() == date 
+                    }
+                    
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(
+                            modifier = Modifier
+                                .width(12.dp)
+                                .height((count * 20).coerceAtMost(100).dp)
+                                .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale("es")).take(1),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                }
+            }
         }
     }
 }
