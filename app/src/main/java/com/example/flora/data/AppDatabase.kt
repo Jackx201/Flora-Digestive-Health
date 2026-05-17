@@ -5,9 +5,10 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [BowelMovement::class], version = 1)
+@Database(entities = [BowelMovement::class, Meal::class], version = 2)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun bowelMovementDao(): BowelMovementDao
+    abstract fun mealDao(): MealDao
 
     companion object {
         @Volatile
@@ -19,7 +20,9 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "flora_database"
-                ).build()
+                )
+                .fallbackToDestructiveMigration()
+                .build()
                 INSTANCE = instance
                 instance
             }

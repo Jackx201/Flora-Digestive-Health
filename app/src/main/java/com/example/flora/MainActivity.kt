@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.flora.data.BowelMovement
+import com.example.flora.data.Meal
 import com.example.flora.ui.theme.FloraTheme
 import java.time.Instant
 import java.time.LocalDate
@@ -77,6 +79,7 @@ fun getBristolColor(type: Int?): Color {
 @Composable
 fun FloraApp(viewModel: FloraViewModel = viewModel()) {
     val movements by viewModel.allMovements.collectAsState()
+    val meals by viewModel.allMeals.collectAsState()
     var showSheet by remember { mutableStateOf(false) }
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
     var currentTab by remember { mutableIntStateOf(0) }
@@ -127,7 +130,7 @@ fun FloraApp(viewModel: FloraViewModel = viewModel()) {
                             }
                         }
                     } else {
-                        IconButton(onClick = { exportStatsAsText(context, movements) }) {
+                        IconButton(onClick = { exportStatsAsText(context, movements, meals) }) {
                             Icon(Icons.Default.Share, "Compartir estadísticas")
                         }
                     }
@@ -176,7 +179,7 @@ fun FloraApp(viewModel: FloraViewModel = viewModel()) {
                             .fillMaxSize()
                             .background(MaterialTheme.colorScheme.surface)
                     ) {
-                        CalendarHeader(selectedDate, movements) { selectedDate = it }
+                        CalendarHeader(selectedDate, movements, meals) { selectedDate = it }
                         
                         val filteredMovements = movements.filter {
                             val moveDate = Instant.ofEpochMilli(it.timestamp)
@@ -184,19 +187,28 @@ fun FloraApp(viewModel: FloraViewModel = viewModel()) {
                                 .toLocalDate()
                             moveDate == selectedDate
                         }
+
+                        val filteredMeals = meals.filter {
+                            val mealDate = Instant.ofEpochMilli(it.timestamp)
+                                .atZone(ZoneId.systemDefault())
+                                .toLocalDate()
+                            mealDate == selectedDate
+                        }
                         
-                        if (filteredMovements.isEmpty()) {
+                        if (filteredMovements.isEmpty() && filteredMeals.isEmpty()) {
                             EmptyState()
                         } else {
-                            MovementList(
+                            EntryList(
                                 movements = filteredMovements,
-                                onDelete = { viewModel.deleteMovement(it) }
+                                meals = filteredMeals,
+                                onDeleteMovement = { viewModel.deleteMovement(it) },
+                                onDeleteMeal = { viewModel.deleteMeal(it) }
                             )
                         }
                     }
                 }
                 1 -> {
-                    StatsScreen(movements)
+                    StatsScreen(movements, meals)
                 }
             }
         }
@@ -207,8 +219,9 @@ fun FloraApp(viewModel: FloraViewModel = viewModel()) {
                 sheetState = sheetState,
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
             ) {
-                AddMovementSheetContent(
-                    onConfirm = { bristolType, notes ->
+                AddEntrySheetContent(
+                    recentMeals = meals.map { it.description }.distinct().take(8),
+                    onAddMovement = { bristolType, notes ->
                         val now = LocalTime.now()
                         val timestamp = selectedDate.atTime(now)
                             .atZone(ZoneId.systemDefault())
@@ -217,6 +230,16 @@ fun FloraApp(viewModel: FloraViewModel = viewModel()) {
                         
                         viewModel.addMovement(bristolType, notes, timestamp)
                         showSheet = false
+                    },
+                    onAddMeal = { description, mealType ->
+                        val now = LocalTime.now()
+                        val timestamp = selectedDate.atTime(now)
+                            .atZone(ZoneId.systemDefault())
+                            .toInstant()
+                            .toEpochMilli()
+                        
+                        viewModel.addMeal(description, mealType, timestamp)
+                        showSheet = false
                     }
                 )
             }
@@ -224,38 +247,38 @@ fun FloraApp(viewModel: FloraViewModel = viewModel()) {
     }
 }
 
-fun exportStatsAsText(context: android.content.Context, movements: List<BowelMovement>) {
-    val total = movements.size
-    val last7Days = movements.count { 
-        Instant.ofEpochMilli(it.timestamp).isAfter(Instant.now().minus(7, ChronoUnit.DAYS))
-    }
-    
-    val ideal = movements.count { it.bristolType in 3..4 }
-    val attention = movements.count { it.bristolType in listOf(2, 5, 6) }
-    val warning = movements.count { it.bristolType in listOf(1, 7) }
+fun exportStatsAsText(context: android.content.Context, movements: List<BowelMovement>, meals: List<Meal>) {
+    val totalMovements = movements.size
+    val totalMeals = meals.size
     
     val report = buildString {
         appendLine("📊 Reporte de Salud Flora")
         appendLine("Generado el: ${LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))}")
         appendLine("---------------------------")
-        appendLine("🔹 Resumen General:")
-        appendLine("- Registros totales: $total")
-        appendLine("- Últimos 7 días: $last7Days")
-        appendLine()
-        appendLine("🔹 Distribución Bristol:")
-        if (total > 0) {
-            appendLine("- Ideal (Tipo 3-4): $ideal (${(ideal * 100 / total)}%)")
-            appendLine("- Atención (Tipo 2, 5, 6): $attention (${(attention * 100 / total)}%)")
-            appendLine("- Advertencia (Tipo 1, 7): $warning (${(warning * 100 / total)}%)")
-        } else {
-            appendLine("Sin registros aún.")
+        appendLine("🔹 Resumen Digestivo:")
+        appendLine("- Registros totales: $totalMovements")
+        if (totalMovements > 0) {
+            val ideal = movements.count { it.bristolType in 3..4 }
+            appendLine("- Salud ideal (Bristol 3-4): ${(ideal * 100 / totalMovements)}%")
         }
         appendLine()
-        appendLine("🔸 Últimas Notas:")
-        movements.take(5).forEach { move ->
-            val date = Instant.ofEpochMilli(move.timestamp).atZone(ZoneId.systemDefault()).toLocalDate()
-            val type = move.bristolType ?: "?"
-            appendLine("- $date: Tipo $type ${if (move.notes.isNotEmpty()) "(${move.notes})" else ""}")
+        appendLine("🔹 Resumen Alimenticio:")
+        appendLine("- Comidas registradas: $totalMeals")
+        if (totalMeals > 0) {
+            val lastMeal = meals.firstOrNull()
+            appendLine("- Última comida: ${lastMeal?.description} (${lastMeal?.mealType})")
+        }
+        appendLine()
+        appendLine("🔸 Últimos Eventos:")
+        // Merge and take last 5
+        val combined = (movements.map { it.timestamp to "Evacuación Tipo ${it.bristolType}" } + 
+                        meals.map { it.timestamp to "Comida: ${it.description}" })
+                        .sortedByDescending { it.first }
+                        .take(5)
+        
+        combined.forEach { (ts, desc) ->
+            val date = Instant.ofEpochMilli(ts).atZone(ZoneId.systemDefault()).toLocalDate()
+            appendLine("- $date: $desc")
         }
     }
 
@@ -294,6 +317,7 @@ fun EmptyState() {
 fun CalendarHeader(
     selectedDate: LocalDate,
     allMovements: List<BowelMovement>,
+    allMeals: List<Meal>,
     onDateSelected: (LocalDate) -> Unit
 ) {
     var isExpanded by remember { mutableStateOf(false) }
@@ -356,9 +380,9 @@ fun CalendarHeader(
                 label = "CalendarExpansion"
             ) { expanded ->
                 if (expanded) {
-                    MonthView(selectedDate, displayedMonth, allMovements, onDateSelected)
+                    MonthView(selectedDate, displayedMonth, allMovements, allMeals, onDateSelected)
                 } else {
-                    WeekView(selectedDate, allMovements, onDateSelected)
+                    WeekView(selectedDate, allMovements, allMeals, onDateSelected)
                 }
             }
         }
@@ -369,6 +393,7 @@ fun CalendarHeader(
 fun WeekView(
     selectedDate: LocalDate,
     allMovements: List<BowelMovement>,
+    allMeals: List<Meal>,
     onDateSelected: (LocalDate) -> Unit
 ) {
     val days = remember(selectedDate) {
@@ -382,7 +407,7 @@ fun WeekView(
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
         days.forEach { date ->
-            DayItem(date, selectedDate, allMovements, onDateSelected)
+            DayItem(date, selectedDate, allMovements, allMeals, onDateSelected)
         }
     }
 }
@@ -392,6 +417,7 @@ fun MonthView(
     selectedDate: LocalDate,
     currentMonth: YearMonth,
     allMovements: List<BowelMovement>,
+    allMeals: List<Meal>,
     onDateSelected: (LocalDate) -> Unit
 ) {
     val daysInMonth = currentMonth.lengthOfMonth()
@@ -430,6 +456,7 @@ fun MonthView(
                                 date = date,
                                 selectedDate = selectedDate,
                                 allMovements = allMovements,
+                                allMeals = allMeals,
                                 onDateSelected = onDateSelected,
                                 compact = true
                             )
@@ -453,6 +480,7 @@ fun DayItem(
     date: LocalDate,
     selectedDate: LocalDate,
     allMovements: List<BowelMovement>,
+    allMeals: List<Meal>,
     onDateSelected: (LocalDate) -> Unit,
     compact: Boolean = false
 ) {
@@ -463,8 +491,14 @@ fun DayItem(
             .toLocalDate() == date
     }
     
+    val mealsForDay = allMeals.filter {
+        Instant.ofEpochMilli(it.timestamp)
+            .atZone(ZoneId.systemDefault())
+            .toLocalDate() == date
+    }
+    
     val indicatorColor = if (movementsForDay.isEmpty()) {
-        Color.Transparent
+        if (mealsForDay.isNotEmpty()) MaterialTheme.colorScheme.tertiary else Color.Transparent
     } else {
         val worstType = movementsForDay.mapNotNull { it.bristolType }.maxByOrNull { 
             when(it) {
@@ -502,7 +536,7 @@ fun DayItem(
                 fontWeight = FontWeight.Bold,
                 color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
             )
-            if (movementsForDay.isNotEmpty()) {
+            if (movementsForDay.isNotEmpty() || mealsForDay.isNotEmpty()) {
                 Box(
                     modifier = Modifier
                         .padding(top = 2.dp)
@@ -518,18 +552,126 @@ fun DayItem(
 }
 
 @Composable
-fun MovementList(
+fun EntryList(
     movements: List<BowelMovement>,
-    onDelete: (BowelMovement) -> Unit
+    meals: List<Meal>,
+    onDeleteMovement: (BowelMovement) -> Unit,
+    onDeleteMeal: (Meal) -> Unit
 ) {
+    val allEntries = remember(movements, meals) {
+        val entryList = mutableListOf<Pair<Long, Any>>()
+        movements.forEach { entryList.add(it.timestamp to it) }
+        meals.forEach { entryList.add(it.timestamp to it) }
+        entryList.sortByDescending { it.first }
+        entryList
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        items(movements) { movement ->
-            MovementItem(movement, onDelete)
+        items(allEntries) { (_, entry) ->
+            when (entry) {
+                is BowelMovement -> MovementItem(entry, onDeleteMovement)
+                is Meal -> MealItem(entry, onDeleteMeal)
+            }
         }
+    }
+}
+
+@Composable
+fun MealItem(
+    meal: Meal,
+    onDelete: (Meal) -> Unit
+) {
+    val date = Instant.ofEpochMilli(meal.timestamp)
+        .atZone(ZoneId.systemDefault())
+        .toLocalDateTime()
+    val formatter = DateTimeFormatter.ofPattern("HH:mm")
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f)
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.Restaurant, 
+                    contentDescription = null, 
+                    tint = MaterialTheme.colorScheme.tertiary
+                )
+            }
+            
+            Spacer(Modifier.width(16.dp))
+            
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = meal.mealType,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = date.format(formatter),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = meal.description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            IconButton(onClick = { showDeleteConfirm = true }) {
+                Icon(
+                    Icons.Default.DeleteOutline,
+                    contentDescription = "Borrar",
+                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                )
+            }
+        }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("¿Eliminar registro de comida?") },
+            text = { Text("Esta acción no se puede deshacer.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDelete(meal)
+                        showDeleteConfirm = false
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Eliminar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
     }
 }
 
@@ -642,20 +784,12 @@ fun MovementItem(
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun AddMovementSheetContent(onConfirm: (Int?, String) -> Unit) {
-    var notes by remember { mutableStateOf("") }
-    var bristolType by remember { mutableStateOf<Int?>(null) }
-
-    val bristolDescription = when (bristolType) {
-        1 -> "Trozos duros y separados (estreñimiento)"
-        2 -> "Forma de salchicha con bultos"
-        3 -> "Como una salchicha con grietas"
-        4 -> "Suave y lisa (ideal)"
-        5 -> "Trozos blandos con bordes definidos"
-        6 -> "Trozos blandos con bordes deshechos"
-        7 -> "Acuosa, sin trozos (diarrea)"
-        else -> "Selecciona un tipo"
-    }
+fun AddEntrySheetContent(
+    recentMeals: List<String>,
+    onAddMovement: (Int?, String) -> Unit,
+    onAddMeal: (String, String) -> Unit
+) {
+    var selectedTab by remember { mutableIntStateOf(0) }
 
     Column(
         modifier = Modifier
@@ -663,13 +797,60 @@ fun AddMovementSheetContent(onConfirm: (Int?, String) -> Unit) {
             .padding(horizontal = 24.dp)
             .padding(bottom = 32.dp)
     ) {
-        Text(
-            "Nuevo Registro",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(Modifier.height(24.dp))
+        TabRow(
+            selectedTabIndex = selectedTab,
+            containerColor = Color.Transparent,
+            divider = {},
+            indicator = { tabPositions ->
+                TabRowDefaults.SecondaryIndicator(
+                    Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        ) {
+            Tab(
+                selected = selectedTab == 0,
+                onClick = { selectedTab = 0 },
+                text = { Text("Evacuación") }
+            )
+            Tab(
+                selected = selectedTab == 1,
+                onClick = { selectedTab = 1 },
+                text = { Text("Comida") }
+            )
+        }
         
+        Spacer(Modifier.height(24.dp))
+
+        if (selectedTab == 0) {
+            AddMovementForm(onConfirm = onAddMovement)
+        } else {
+            AddMealForm(
+                suggestions = recentMeals,
+                onConfirm = onAddMeal
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun AddMovementForm(onConfirm: (Int?, String) -> Unit) {
+    var notes by remember { mutableStateOf("") }
+    var bristolType by remember { mutableStateOf<Int?>(null) }
+
+    val bristolDescription = when (bristolType) {
+        1 -> "Trozos duros y separados (estreñimiento)"
+        2 -> "Forma de cilindro alargado con bultos"
+        3 -> "Como un cilindro alargado con grietas"
+        4 -> "Suave y lisa (ideal)"
+        5 -> "Trozos blandos con bordes definidos"
+        6 -> "Trozos blandos con bordes deshechos"
+        7 -> "Acuosa, sin trozos (diarrea)"
+        else -> "Selecciona un tipo"
+    }
+
+    Column {
         Text(
             "¿Cómo fue la consistencia?",
             style = MaterialTheme.typography.titleMedium,
@@ -725,8 +906,80 @@ fun AddMovementSheetContent(onConfirm: (Int?, String) -> Unit) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun StatsScreen(movements: List<BowelMovement>) {
+fun AddMealForm(suggestions: List<String>, onConfirm: (String, String) -> Unit) {
+    var description by remember { mutableStateOf("") }
+    var mealType by remember { mutableStateOf("Almuerzo") }
+    val mealTypes = listOf("Desayuno", "Almuerzo", "Cena", "Snack")
+
+    Column {
+        Text(
+            "¿Qué comiste?",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Spacer(Modifier.height(16.dp))
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            mealTypes.forEach { type ->
+                FilterChip(
+                    selected = mealType == type,
+                    onClick = { mealType = type },
+                    label = { Text(type) }
+                )
+            }
+        }
+        
+        Spacer(Modifier.height(16.dp))
+        
+        OutlinedTextField(
+            value = description,
+            onValueChange = { description = it },
+            label = { Text("Descripción de la comida") },
+            placeholder = { Text("Ej: Ensalada de pollo y arroz") },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            leadingIcon = { Icon(Icons.Default.Restaurant, null) }
+        )
+
+        if (suggestions.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            Text("Comidas recientes:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.outline)
+            Spacer(Modifier.height(8.dp))
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                suggestions.forEach { suggestion ->
+                    SuggestionChip(
+                        onClick = { description = suggestion },
+                        label = { Text(suggestion) },
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                }
+            }
+        }
+        
+        Spacer(Modifier.height(32.dp))
+        
+        Button(
+            onClick = { onConfirm(description, mealType) },
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            shape = RoundedCornerShape(16.dp),
+            enabled = description.isNotEmpty()
+        ) {
+            Text("Guardar Comida", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
+    }
+}
+
+@Composable
+fun StatsScreen(movements: List<BowelMovement>, meals: List<Meal>) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -752,12 +1005,117 @@ fun StatsScreen(movements: List<BowelMovement>) {
         }
 
         item {
+            FoodCorrelationSection(movements, meals)
+        }
+
+        item {
             HistoricalPatternsSection(movements)
         }
         
         item {
             Spacer(Modifier.height(16.dp))
         }
+    }
+}
+
+@Composable
+fun FoodCorrelationSection(movements: List<BowelMovement>, meals: List<Meal>) {
+    if (movements.isEmpty() || meals.isEmpty()) return
+
+    val correlations = remember(movements, meals) {
+        val analysis = mutableMapOf<String, Pair<Int, Int>>() // Name -> (TotalScore, AssociationCount)
+        
+        meals.forEach { meal ->
+            val mealName = meal.description.trim().lowercase()
+            if (mealName.isNotEmpty()) {
+                val nextMovements = movements.filter { 
+                    it.timestamp >= meal.timestamp &&
+                    it.timestamp < meal.timestamp + 24 * 60 * 60 * 1000 // 24h window
+                }
+                
+                if (nextMovements.isNotEmpty()) {
+                    var mealScore = 0
+                    nextMovements.forEach { move ->
+                        mealScore += when (move.bristolType) {
+                            3, 4 -> 10 // Ideal
+                            2, 5 -> 5  // Okay
+                            6 -> -5    // Warning
+                            1, 7 -> -20 // Bad
+                            else -> 0
+                        }
+                    }
+                    val current = analysis.getOrDefault(mealName, Pair(0, 0))
+                    analysis[mealName] = Pair(current.first + mealScore, current.second + nextMovements.size)
+                }
+            }
+        }
+        
+        analysis.map { (name, stats) ->
+            val avgScore = stats.first.toFloat() / stats.second
+            Triple(name.replaceFirstChar { it.uppercase() }, avgScore, stats.second)
+        }.filter { it.third >= 1 }
+        .sortedByDescending { it.second }
+    }
+
+    val bestFoods = correlations.filter { it.second > 0f }.take(3)
+    val worstFoods = correlations.filter { it.second <= 0f }.sortedBy { it.second }.take(3)
+
+    if (bestFoods.isEmpty() && worstFoods.isEmpty()) return
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Restaurant, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Correlación Alimento-Salud", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(16.dp))
+
+            if (bestFoods.isNotEmpty()) {
+                Text("Mejor digestión con:", style = MaterialTheme.typography.labelMedium, color = Color(0xFF81C784))
+                bestFoods.forEach { (name, score, _) ->
+                    val quality = when {
+                        score >= 8f -> "Excelente"
+                        else -> "Buena"
+                    }
+                    CorrelationRow(name, quality, Color(0xFF81C784), Icons.Default.ThumbUp)
+                }
+            }
+
+            if (worstFoods.isNotEmpty()) {
+                if (bestFoods.isNotEmpty()) Spacer(Modifier.height(12.dp))
+                Text("Menor digestión con:", style = MaterialTheme.typography.labelMedium, color = Color(0xFFE57373))
+                worstFoods.forEach { (name, score, _) ->
+                    val quality = when {
+                        score <= -15f -> "Muy Pesada"
+                        else -> "Pesada"
+                    }
+                    CorrelationRow(name, quality, Color(0xFFE57373), Icons.Default.ThumbDown)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CorrelationRow(name: String, quality: String, color: Color, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = color.copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text(
+            quality,
+            style = MaterialTheme.typography.labelLarge, 
+            fontWeight = FontWeight.Bold,
+            color = color
+        )
     }
 }
 
