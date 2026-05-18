@@ -34,3 +34,9 @@ val TertiaryDark = Color(0xFFA0D0CB)
 val OnTertiaryDark = Color(0xFF003735)
 val TertiaryContainerDark = Color(0xFF1F4E4B)
 val OnTertiaryContainerDark = Color(0xFFBBECE7)
+
+// Bristol Scale Colors
+val BristolIdeal = Color(0xFF81C784)
+val BristolAttention = Color(0xFFFFB74D)
+val BristolWarning = Color(0xFFE57373)
+val BristolUnknown = Color(0xFFBDBDBD)
