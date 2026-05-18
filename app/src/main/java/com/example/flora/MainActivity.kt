@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -72,6 +73,19 @@ fun getBristolColor(type: Int?): Color {
         2, 5, 6 -> Color(0xFFFFB74D) // Orange/Yellow (Attention)
         3, 4 -> Color(0xFF81C784) // Green (Ideal)
         else -> Color(0xFFBDBDBD) // Grey (Unknown)
+    }
+}
+
+fun getBristolIcon(type: Int?): Int {
+    return when (type) {
+        1 -> R.drawable.bristol_1
+        2 -> R.drawable.bristol_2
+        3 -> R.drawable.bristol_3
+        4 -> R.drawable.bristol_4
+        5 -> R.drawable.bristol_5
+        6 -> R.drawable.bristol_6
+        7 -> R.drawable.bristol_7
+        else -> R.drawable.ic_launcher_foreground
     }
 }
 
@@ -704,12 +718,21 @@ fun MovementItem(
                     .background(getBristolColor(movement.bristolType).copy(alpha = 0.2f)),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = movement.bristolType?.toString() ?: "?",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = getBristolColor(movement.bristolType)
-                )
+                if (movement.bristolType != null) {
+                    Icon(
+                        painter = painterResource(getBristolIcon(movement.bristolType)),
+                        contentDescription = null,
+                        modifier = Modifier.size(32.dp),
+                        tint = getBristolColor(movement.bristolType)
+                    )
+                } else {
+                    Text(
+                        text = "?",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = getBristolColor(movement.bristolType)
+                    )
+                }
             }
             
             Spacer(Modifier.width(16.dp))
@@ -863,6 +886,25 @@ fun AddMovementForm(onConfirm: (Int?, String) -> Unit) {
         )
         Spacer(Modifier.height(16.dp))
         
+        if (bristolType != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(80.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(getBristolColor(bristolType).copy(alpha = 0.1f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(getBristolIcon(bristolType)),
+                    contentDescription = null,
+                    modifier = Modifier.size(64.dp),
+                    tint = getBristolColor(bristolType)
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -921,9 +963,10 @@ fun AddMealForm(suggestions: List<String>, onConfirm: (String, String) -> Unit) 
         )
         Spacer(Modifier.height(16.dp))
         
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             mealTypes.forEach { type ->
                 FilterChip(
