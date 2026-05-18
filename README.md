@@ -1,5 +1,7 @@
 # Flora 🌿
 
+![Kotlin](https://img.shields.io/badge/kotlin-%237F52FF.svg?style=for-the-badge&logo=kotlin&logoColor=white)
+
 **Flora** is a modern Android application designed to help users track their digestive health and nutrition. By correlating meals with bowel movements using the **Bristol Stool Scale**, Flora provides actionable insights into how different foods affect your well-being.
 
 ## ✨ Features
